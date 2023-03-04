@@ -16,7 +16,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-from modules.database import searchDB, searchDBlist, searchMedia, add_to_DataBase, remove_from_DataBase
+from modules.database import searchDB, searchDBlist, add_to_DataBase, remove_from_DataBase
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="I'm a bot, please talk to me!")
@@ -180,8 +180,12 @@ async def getListMedia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     query = update.callback_query
     await query.answer()
     resp = query.data.strip("filename ")
-    result = searchMedia('fileName', resp)
-    await context.bot.copyMessage(chat_id=update.effective_chat.id, from_chat_id=chatId, message_id=result[0])
+    context.user_data['searchResults'] = searchDBlist('fileName', resp)
+    keyboard = [
+        [InlineKeyboardButton("❌", callback_data="remove")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await context.bot.copyMessage(chat_id=update.effective_chat.id, from_chat_id=chatId, message_id=context.user_data['searchResults'][0][1], reply_markup=reply_markup)
 
 async def dummyButtons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
@@ -268,10 +272,13 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try: 
         query = update.callback_query
         await query.answer()
-        await query.delete_message()
-        global n
-        search_type, value = 'postId', context.user_data['searchResults'][0 + n]
-        del context.bot_data['msgId']
+        try:
+            await query.delete_message()
+            global n
+            search_type, value = 'postId', context.user_data['searchResults'][0 + n]
+            del context.bot_data['msgId']
+        except (NameError, IndexError):
+            search_type, value = 'postId', context.user_data['searchResults'][0][1]
     except NameError:
         search_type, value = context.args[0], context.args[1]
 
@@ -315,7 +322,7 @@ if __name__ == '__main__':
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("upload", upload, filters.Chat(username="@radiquum")),],
         states={
-            MEDIA: [MessageHandler(filters.Document.VIDEO | filters.Document.IMAGE, media), MessageHandler(filters.ALL, not_media)],
+            MEDIA: [MessageHandler((filters.Document.VIDEO | filters.Document.IMAGE) & ~filters.COMMAND, media), MessageHandler(filters.ALL & ~filters.COMMAND, not_media)],
             TAG: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, tag),
                 CommandHandler("skip", skip_tag),

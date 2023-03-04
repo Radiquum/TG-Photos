@@ -56,18 +56,11 @@ def searchDB(search_type, value):
         results.extend(row.postId for row in result)
     return(results)
 
-def searchDBlist(search_type, value, offset, limit=6):
+def searchDBlist(search_type, value, offset=0, limit=6):
     results = []
     with engine.connect() as conn:
         result = conn.execute(text(f"SELECT postId, fileName FROM posts WHERE {search_type} == :{search_type} LIMIT {limit} OFFSET {offset}"), {search_type: value})
         results.extend((row.fileName, row.postId) for row in result)
-    return(results)
-
-def searchMedia(search_type, value):
-    results = []
-    with engine.connect() as conn:
-        result = conn.execute(text(f"SELECT postId, fileName FROM posts WHERE {search_type} == :{search_type}"), {search_type: value})
-        results.extend(row.postId for row in result)
     return(results)
 
 def add_to_DataBase(postId, fileName, takenTime, tags='NULL'):

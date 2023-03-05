@@ -1,3 +1,5 @@
 python-telegram-bot
 sqlalchemy
 python-dotenv
+snscrape
+pre-commit

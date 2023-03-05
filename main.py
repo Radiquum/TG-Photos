@@ -1,30 +1,26 @@
 import contextlib
 import datetime
+import logging
 import os
+import time
 
 from dotenv import load_dotenv
+from telegram import InlineKeyboardButton
+from telegram import InlineKeyboardMarkup
+from telegram import Update
+from telegram.ext import ApplicationBuilder
+from telegram.ext import CallbackQueryHandler
+from telegram.ext import CommandHandler
+from telegram.ext import ContextTypes
+from telegram.ext import ConversationHandler
+from telegram.ext import filters
+from telegram.ext import MessageHandler
 
 load_dotenv()
 
 current_time = datetime.datetime.now()
 botToken = os.getenv("botToken")
 chatId = os.getenv("chatId")
-
-import logging
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Update,
-)
-from telegram.ext import (
-    filters,
-    MessageHandler,
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-    CallbackQueryHandler,
-    ConversationHandler,
-)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -51,11 +47,10 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def searchDate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # timestamp = dt
-    ##timestamp = time.mktime(time.strptime(" ".join(context.args), '%b %d %Y'))
-    # result = searchDB('timestamp', timestamp)
-    # message = await context.bot.send_message(chat_id=update.effective_chat.id, text=result)
-    pass
+    timestamp = time.mktime(time.strptime(" ".join(context.args), "%b %d %Y"))
+    context.user_data["searchTypeDate"] = "timestamp"
+    context.user_data["searchTermDate"] = timestamp
+    await searchList(update, context)
 
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -111,6 +106,8 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=update.effective_chat.id,
             text="Nothing found for this date. Retry your search.",
         )
+        with contextlib.suppress(KeyError):
+            del context.bot_data["msgId"]
         return False
     context.bot_data["msgId"] = await context.bot.copyMessage(
         chat_id=update.effective_chat.id,
@@ -192,9 +189,16 @@ async def searchList(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=update.effective_chat.id,
             message_id=context.bot_data["msgId"]["message_id"],
         )
+
     try:
         context.user_data["searchType"] = context.args[0]
         context.user_data["searchTerm"] = context.args[1].capitalize()
+        with contextlib.suppress(KeyError):
+            if context.user_data["searchTypeDate"] == "timestamp":
+                context.user_data["searchType"] = context.user_data["searchTypeDate"]
+                context.user_data["searchTerm"] = context.user_data["searchTermDate"]
+                del context.user_data["searchTypeDate"]
+                del context.user_data["searchTermDate"]
     except IndexError:
         await context.bot.sendMessage(
             chat_id=update.effective_chat.id, text="wrong or not complete command!"
@@ -212,6 +216,8 @@ async def searchList(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=update.effective_chat.id,
             text="Nothing found for this date. Retry your search.",
         )
+        with contextlib.suppress(KeyError):
+            del context.bot_data["msgId"]
         return False
 
     pages = sum(
@@ -260,6 +266,8 @@ async def listNavButtons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             chat_id=update.effective_chat.id,
             text="Nothing found for this date. Retry your search.",
         )
+        with contextlib.suppress(KeyError):
+            del context.bot_data["msgId"]
         return False
 
     keyboard = [
@@ -428,7 +436,8 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await query.delete_message()
             global n
             search_type, value = "postId", context.user_data["searchResults"][0 + n]
-            del context.bot_data["msgId"]
+            with contextlib.suppress(KeyError):
+                del context.bot_data["msgId"]
         except (NameError, IndexError):
             search_type, value = "postId", context.user_data["searchResults"][0][1]
             global pages

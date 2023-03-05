@@ -1,0 +1,7 @@
+Add this commands to your bot in @BotFather
+
+search - search media as files /search (day, month, year) (value)
+searchlist - search media as list /searchList (day, month, year) (value)
+searchdate - search media as list /searchDate (month day year: Feb 10 2020)
+upload - upload new media (/upload bulk for bulk uploads)
+remove - remove media /remove (postId, fileName) (value)

@@ -185,23 +185,33 @@ async def getListMedia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         [InlineKeyboardButton("❌", callback_data="remove")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await context.bot.copyMessage(chat_id=update.effective_chat.id, from_chat_id=chatId, message_id=context.user_data['searchResults'][0][1], reply_markup=reply_markup)
-
+    try:
+        await context.bot.copyMessage(chat_id=update.effective_chat.id, from_chat_id=chatId, message_id=context.user_data['searchResults'][0][1], reply_markup=reply_markup)
+    except IndexError:
+        await context.bot.sendMessage(chat_id=update.effective_chat.id, text="Requested media is not found or has been deleted.")
+        
 async def dummyButtons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     if query.data == 'dummy':
         return
     
-MEDIA, TAG = range(2)
+MEDIA, TAG, MEDIA_BULK = range(3)
 
 async def upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
+    context.bot_data['document_file'] = []
     await update.message.reply_text(
-        "Send me a File or Video as a Document. "
+        "Send me a Photo or a Video as a Document. "
         "Send /cancel to stop uploading.\n\n"
         )
-    return MEDIA
+    
+    try:
+        if context.args[0] == 'bulk':
+            await update.message.reply_text("You can start uploading media until you type /finish")
+            return MEDIA_BULK
+    except IndexError:
+        return MEDIA
 
 async def media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
@@ -211,8 +221,13 @@ async def media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     return TAG
 
-def getTime(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    photoTime = context.bot_data['document_file'].file_name.split(".")[0].split("_")
+async def media_bulk(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    # sourcery skip: merge-list-append
+    user = update.message.from_user
+    context.bot_data['document_file'].append(update.message.document)
+
+def getTime(update: Update, context: ContextTypes.DEFAULT_TYPE, document):
+    photoTime = document.file_name.split(".")[0].split("_")
     day = datetime.datetime.strptime(photoTime[1], "%Y%m%d").strftime("%b %d, %Y,")
     time = datetime.datetime.strptime(photoTime[2][:6], "%H%M%S").strftime("%I:%M:%S %p")
     takenTime = f"{day} {time}"
@@ -239,17 +254,17 @@ async def tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def skip_tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
+    for x in context.bot_data['document_file']:
+        takenTime, createdTime = getTime(Update, context, x)
+        context.bot_data['docId'] = await context.bot.send_document(chat_id=os.getenv('chatId'), document=x, parse_mode="html", caption=f"""
+    <b>FileName</b>: {x.file_name}
+    <b>Taken</b>: {takenTime}
+    <b>Created</b>: {createdTime}
+    """)
+        add_to_DataBase(context.bot_data['docId'].message_id, x.file_name, takenTime)
     await update.message.reply_text(
         "Your media has been uploaded without tags."
     )
-    takenTime, createdTime = getTime(Update, context)
-    context.bot_data['docId'] = await context.bot.send_document(chat_id=os.getenv('chatId'), document=context.bot_data['document_file'], parse_mode="html", caption=f"""
-<b>FileName</b>: {context.bot_data['document_file'].file_name}
-<b>Taken</b>: {takenTime}
-<b>Created</b>: {createdTime}
-""")
-    add_to_DataBase(context.bot_data['docId'].message_id, context.bot_data['document_file'].file_name, takenTime)
-
     return ConversationHandler.END
 
 async def upload_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -263,10 +278,8 @@ async def upload_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 async def not_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
     await update.message.reply_text(
-        "wrong attachment format. upload has been cancelled."
+        "wrong attachment format."
     )
-
-    return ConversationHandler.END
 
 async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try: 
@@ -319,18 +332,21 @@ if __name__ == '__main__':
     application.add_handler(CallbackQueryHandler(dummyButtons, pattern="^dummy$"))
     application.add_handler(CallbackQueryHandler(remove, pattern="^remove$"))
     
-    conv_handler = ConversationHandler(
+    upload_handler = ConversationHandler(
         entry_points=[CommandHandler("upload", upload, filters.Chat(username="@radiquum")),],
         states={
             MEDIA: [MessageHandler((filters.Document.VIDEO | filters.Document.IMAGE) & ~filters.COMMAND, media), MessageHandler(filters.ALL & ~filters.COMMAND, not_media)],
             TAG: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, tag),
                 CommandHandler("skip", skip_tag),
-            ]
+            ],
+            MEDIA_BULK: [MessageHandler((filters.Document.VIDEO | filters.Document.IMAGE) & ~filters.COMMAND, media_bulk),
+                         MessageHandler(filters.ALL & ~filters.COMMAND, not_media),
+                         CommandHandler("finish", skip_tag)],
         },
         fallbacks=[CommandHandler("cancel", upload_cancel)],
     )
-    application.add_handler(conv_handler)
+    application.add_handler(upload_handler)
+
     application.add_handler(unknown_handler)
-    
     application.run_polling()

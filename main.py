@@ -5,6 +5,8 @@ import os
 import time
 
 from dotenv import load_dotenv
+from pyrogram import Client
+from pyrogram.errors import SessionPasswordNeeded
 from telegram import InlineKeyboardButton
 from telegram import InlineKeyboardMarkup
 from telegram import Update
@@ -21,17 +23,21 @@ load_dotenv()
 current_time = datetime.datetime.now()
 botToken = os.getenv("botToken")
 chatId = os.getenv("chatId")
+api_id = os.getenv("appId")
+api_hash = os.getenv("appHash")
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-from modules.database import (
+from modules.database_functions import (
     searchDB,
     searchDBlist,
     add_to_DataBase,
     remove_from_DataBase,
 )
+
+from modules.database_scraper import fetch_messages
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -40,10 +46,118 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id, text=update.message.text
+async def db_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if os.path.isfile("my_account.session"):
+        await context.bot.sendMessage(
+            update.effective_chat.id, "Updating posts DataBase... please wait..."
+        )
+        await fetch_messages()
+        await context.bot.sendMessage(
+            update.effective_chat.id, "DataBase has been updated."
+        )
+    else:
+        await context.bot.sendMessage(
+            chat_id=update.effective_chat.id, text="please /login first"
+        )
+
+
+PHONE, CONFIRMATION, PASSWORD = range(3)
+
+
+async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    with contextlib.suppress(FileNotFoundError):
+        os.remove("my_account.session")
+
+    context.bot_data["msgId"] = await context.bot.sendMessage(
+        update.effective_chat.id,
+        "Send me your Phone number (+12345678900).\n\n Send /cancel to cancel sign in.",
     )
+    return PHONE
+
+
+async def phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.bot_data["user_phone"] = update.message.text
+    await context.bot.deleteMessage(update.effective_chat.id, update.message.id)
+
+    context.bot_data["client"] = Client("my_account", api_id, api_hash)
+    await context.bot_data["client"].connect()
+
+    await context.bot.editMessageText(
+        chat_id=update.effective_chat.id,
+        message_id=context.bot_data["msgId"]["message_id"],
+        text="Now send me your confirmation code from Telegram app.\n\n Send /cancel to cancel sign in.",
+    )
+
+    context.bot_data["user_confirmation"] = await context.bot_data["client"].send_code(
+        context.bot_data["user_phone"]
+    )
+
+    return CONFIRMATION
+
+
+async def confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    try:
+        context.bot_data["user_confirmation_code"] = update.message.text.strip(" ")
+        await context.bot.deleteMessage(update.effective_chat.id, update.message.id)
+        await context.bot_data["client"].sign_in(
+            context.bot_data["user_phone"],
+            context.bot_data["user_confirmation"].phone_code_hash,
+            context.bot_data["user_confirmation_code"],
+        )
+        await context.bot.editMessageText(
+            chat_id=update.effective_chat.id,
+            message_id=context.bot_data["msgId"]["message_id"],
+            text="Login succeeded.",
+        )
+        # await context.bot_data["client"].disconnect()
+        with contextlib.suppress(KeyError):
+            del context.bot_data["user_phone"]
+            del context.bot_data["user_confirmation"]
+            del context.bot_data["user_confirmation_code"]
+            del context.bot_data["user_password"]
+        return ConversationHandler.END
+    except SessionPasswordNeeded:
+        await context.bot.editMessageText(
+            chat_id=update.effective_chat.id,
+            message_id=context.bot_data["msgId"]["message_id"],
+            text="Please enter your 2FA password.\n\n Send /cancel to cancel sign in.",
+        )
+        return PASSWORD
+
+
+async def password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    context.bot_data["user_password"] = update.message.text
+    await context.bot.deleteMessage(update.effective_chat.id, update.message.id)
+    await context.bot_data["client"].check_password(context.bot_data["user_password"])
+    await context.bot.editMessageText(
+        chat_id=update.effective_chat.id,
+        message_id=context.bot_data["msgId"]["message_id"],
+        text="Login succeeded",
+    )
+    # await context.bot_data["client"].disconnect()
+    with contextlib.suppress(KeyError):
+        del context.bot_data["user_phone"]
+        del context.bot_data["user_confirmation"]
+        del context.bot_data["user_confirmation_code"]
+        del context.bot_data["user_password"]
+    return ConversationHandler.END
+
+
+async def login_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await context.bot.editMessageText(
+        chat_id=update.effective_chat.id,
+        message_id=context.bot_data["msgId"]["message_id"],
+        text="login cancelled.",
+    )
+    with contextlib.suppress(KeyError):
+        del context.bot_data["user_phone"]
+        del context.bot_data["user_confirmation"]
+        del context.bot_data["user_confirmation_code"]
+        del context.bot_data["user_password"]
+        # await context.bot_data["client"].disconnect()
+    with contextlib.suppress(FileNotFoundError):
+        os.remove("my_account.session")
+    return ConversationHandler.END
 
 
 async def searchDate(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -488,18 +602,23 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 if __name__ == "__main__":
-    start_handler = CommandHandler("start", start, filters.Chat(username="@radiquum"))
+    start_handler = CommandHandler(
+        "start", start, filters.Chat(username=os.getenv("username"))
+    )
     searchDate_handler = CommandHandler(
-        "searchDate", searchDate, filters.Chat(username="@radiquum")
+        "searchDate", searchDate, filters.Chat(username=os.getenv("username"))
     )
     searchList_handler = CommandHandler(
-        "searchList", searchList, filters.Chat(username="@radiquum")
+        "searchList", searchList, filters.Chat(username=os.getenv("username"))
     )
     search_handler = CommandHandler(
-        "search", search, filters.Chat(username="@radiquum")
+        "search", search, filters.Chat(username=os.getenv("username"))
     )
     remove_handler = CommandHandler(
-        "remove", remove, filters.Chat(username="@radiquum")
+        "remove", remove, filters.Chat(username=os.getenv("username"))
+    )
+    update_handler = CommandHandler(
+        "update", db_update, filters.Chat(username=os.getenv("username"))
     )
     unknown_handler = MessageHandler(filters.COMMAND, unknown)
 
@@ -509,6 +628,7 @@ if __name__ == "__main__":
     application.add_handler(searchList_handler)
     application.add_handler(search_handler)
     application.add_handler(remove_handler)
+    application.add_handler(update_handler)
     application.add_handler(CallbackQueryHandler(imgNavButtons, pattern="^img"))
     application.add_handler(CallbackQueryHandler(listNavButtons, pattern="^list"))
     application.add_handler(CallbackQueryHandler(getListMedia, pattern="^filename"))
@@ -517,7 +637,9 @@ if __name__ == "__main__":
 
     upload_handler = ConversationHandler(
         entry_points=[
-            CommandHandler("upload", upload, filters.Chat(username="@radiquum")),
+            CommandHandler(
+                "upload", upload, filters.Chat(username=os.getenv("username"))
+            ),
         ],
         states={
             MEDIA: [
@@ -545,6 +667,36 @@ if __name__ == "__main__":
         fallbacks=[CommandHandler("cancel", upload_cancel)],
     )
     application.add_handler(upload_handler)
+
+    login_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler(
+                "login", login, filters.Chat(username=os.getenv("username"))
+            ),
+        ],
+        states={
+            PHONE: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    phone,
+                ),
+            ],
+            CONFIRMATION: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    confirmation,
+                ),
+            ],
+            PASSWORD: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    password,
+                ),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", login_cancel)],
+    )
+    application.add_handler(login_handler)
 
     application.add_handler(unknown_handler)
     application.run_polling()

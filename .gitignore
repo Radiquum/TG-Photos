@@ -163,3 +163,5 @@ cython_debug/
 #Other
 .vscode/
 *.db
+my_account.session
+log.txt

@@ -30,14 +30,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-from modules.database_functions import (
-    searchDB,
-    searchDBlist,
-    add_to_DataBase,
-    remove_from_DataBase,
-)
-
-from modules.database_scraper import fetch_messages
+from modules.database import fetch_messages, search_in_DB, remove_from_DB, add_to_DB
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -160,13 +153,6 @@ async def login_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return ConversationHandler.END
 
 
-async def searchDate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    timestamp = time.mktime(time.strptime(" ".join(context.args), "%b %d %Y"))
-    context.user_data["searchTypeDate"] = "timestamp"
-    context.user_data["searchTermDate"] = timestamp
-    await searchList(update, context)
-
-
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global n
     n = 0
@@ -177,7 +163,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     try:
         context.user_data["searchType"] = context.args[0]
-        context.user_data["searchTerm"] = context.args[1].capitalize()
+        context.user_data["searchTerm"] = context.args
     except IndexError:
         await context.bot.sendMessage(
             chat_id=update.effective_chat.id, text="wrong or not complete command!"
@@ -187,7 +173,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id, message_id=update.effective_message.id
     )
 
-    context.user_data["searchResults"] = searchDB(
+    context.user_data["searchResults"] = search_in_DB(
         context.user_data.get("searchType"), context.user_data.get("searchTerm")
     )
 
@@ -226,7 +212,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.bot_data["msgId"] = await context.bot.copyMessage(
         chat_id=update.effective_chat.id,
         from_chat_id=chatId,
-        message_id=context.user_data["searchResults"][0],
+        message_id=context.user_data["searchResults"][0][0],
         reply_markup=reply_markup,
     )
 
@@ -285,7 +271,7 @@ async def imgNavButtons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     context.bot_data["msgId"] = await context.bot.copyMessage(
         chat_id=update.effective_chat.id,
         from_chat_id=chatId,
-        message_id=context.user_data["searchResults"][0 + n],
+        message_id=context.user_data["searchResults"][0 + n][0],
         reply_markup=reply_markup,
     )
     await query.delete_message()
@@ -306,13 +292,7 @@ async def searchList(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         context.user_data["searchType"] = context.args[0]
-        context.user_data["searchTerm"] = context.args[1].capitalize()
-        with contextlib.suppress(KeyError):
-            if context.user_data["searchTypeDate"] == "timestamp":
-                context.user_data["searchType"] = context.user_data["searchTypeDate"]
-                context.user_data["searchTerm"] = context.user_data["searchTermDate"]
-                del context.user_data["searchTypeDate"]
-                del context.user_data["searchTermDate"]
+        context.user_data["searchTerm"] = context.args
     except IndexError:
         await context.bot.sendMessage(
             chat_id=update.effective_chat.id, text="wrong or not complete command!"
@@ -322,8 +302,11 @@ async def searchList(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id, message_id=update.effective_message.id
     )
 
-    context.user_data["searchResults"] = searchDBlist(
-        context.user_data.get("searchType"), context.user_data.get("searchTerm"), offset
+    context.user_data["searchResults"] = search_in_DB(
+        context.user_data.get("searchType"),
+        context.user_data.get("searchTerm"),
+        offset,
+        limit=6,
     )
     if context.user_data["searchResults"] == []:
         await context.bot.sendMessage(
@@ -338,7 +321,7 @@ async def searchList(update: Update, context: ContextTypes.DEFAULT_TYPE):
         i % 6 == 0
         for i in range(
             len(
-                searchDB(
+                search_in_DB(
                     context.user_data.get("searchType"),
                     context.user_data.get("searchTerm"),
                 )
@@ -346,7 +329,7 @@ async def searchList(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     )
     keyboard = [
-        [InlineKeyboardButton(x[0], callback_data=f"filename {x[0]}")]
+        [InlineKeyboardButton(x[1], callback_data=f"filename {x[1]}")]
         for x in context.user_data["searchResults"]
     ]
     if len(context.user_data["searchResults"]) == 6 and n != pages:
@@ -372,8 +355,11 @@ async def listNavButtons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     else:
         offset += 6
 
-    context.user_data["searchResults"] = searchDBlist(
-        context.user_data.get("searchType"), context.user_data.get("searchTerm"), offset
+    context.user_data["searchResults"] = search_in_DB(
+        context.user_data.get("searchType"),
+        context.user_data.get("searchTerm"),
+        offset,
+        limit=6,
     )
     if context.user_data["searchResults"] == []:
         await context.bot.sendMessage(
@@ -385,7 +371,7 @@ async def listNavButtons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return False
 
     keyboard = [
-        [InlineKeyboardButton(x[0], callback_data=f"filename {x[0]}")]
+        [InlineKeyboardButton(x[1], callback_data=f"filename {x[1]}")]
         for x in context.user_data["searchResults"]
     ]
     if n not in [pages, 1]:
@@ -412,7 +398,7 @@ async def getListMedia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     query = update.callback_query
     await query.answer()
     resp = query.data.strip("filename ")
-    context.user_data["searchResults"] = searchDBlist("fileName", resp)
+    context.user_data["media"] = search_in_DB("filename", [0, resp])
     keyboard = [
         [InlineKeyboardButton("❌", callback_data="remove")],
     ]
@@ -421,7 +407,7 @@ async def getListMedia(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await context.bot.copyMessage(
             chat_id=update.effective_chat.id,
             from_chat_id=chatId,
-            message_id=context.user_data["searchResults"][0][1],
+            message_id=context.user_data["media"][0][0],
             reply_markup=reply_markup,
         )
     except IndexError:
@@ -462,13 +448,12 @@ async def media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
     context.bot_data["document_file"].append(update.message.document)
     await update.message.reply_text(
-        "Now, send me a tag you wish to add, or send /skip if you don't want to."
+        'Now, send me a tag(s)[devided by ","] you wish to add or send /skip if you don\'t want to.'
     )
     return TAG
 
 
 async def media_bulk(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    user = update.message.from_user
     context.bot_data["document_file"].append(update.message.document)
 
 
@@ -484,7 +469,6 @@ def getTime(update: Update, context: ContextTypes.DEFAULT_TYPE, document):
 
 
 async def tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    user = update.message.from_user
     tags = update.message.text
     await update.message.reply_text("Your media has been uploaded and tagged.")
 
@@ -502,11 +486,11 @@ async def tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 <b>Tags</b>: {tags}
 """,
     )
-    add_to_DataBase(
+    add_to_DB(
         context.bot_data["docId"].message_id,
         context.bot_data["document_file"][0].file_name,
         takenTime,
-        tags,
+        tags.casefold().strip().split(","),
     )
 
     return ConversationHandler.END
@@ -524,9 +508,10 @@ async def skip_tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 <b>FileName</b>: {x.file_name}
 <b>Taken</b>: {takenTime}
 <b>Created</b>: {createdTime}
+<b>Tags</b>:
     """,
         )
-        add_to_DataBase(context.bot_data["docId"].message_id, x.file_name, takenTime)
+        add_to_DB(context.bot_data["docId"].message_id, x.file_name, takenTime)
     await update.message.reply_text("Your media has been uploaded without tags.")
     return ConversationHandler.END
 
@@ -549,41 +534,38 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         try:
             await query.delete_message()
             global n
-            search_type, value = "postId", context.user_data["searchResults"][0 + n]
+            search_type, value = "id", context.user_data["searchResults"][0 + n][0]
             with contextlib.suppress(KeyError):
                 del context.bot_data["msgId"]
         except (NameError, IndexError):
-            search_type, value = "postId", context.user_data["searchResults"][0][1]
+            search_type, value = "id", context.user_data["media"][0][0]
             global pages
     except NameError:
         search_type, value = context.args[0], context.args[1]
 
-    if search_type in ["postId", "fileName"]:
+    if search_type in ["id", "filename"]:
         try:
-            ID = remove_from_DataBase(search_type, value)
+            ID = remove_from_DB(search_type, value)
             with contextlib.suppress(NameError):
                 pages = sum(
                     i % 6 == 0
                     for i in range(
                         len(
-                            searchDB(
+                            search_in_DB(
                                 context.user_data.get("searchType"),
                                 context.user_data.get("searchTerm"),
                             )
                         )
                     )
                 )
-            for x in ID:
-                await context.bot.deleteMessage(
-                    chat_id=os.getenv("chatId"), message_id=x[1]
-                )
-            if ID == []:
-                raise ValueError
+            await context.bot.deleteMessage(
+                chat_id=os.getenv("chatId"), message_id=ID.id
+            )
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text="Requested file(s) has been deleted.",
             )
-        except (ValueError, IndexError):
+        except (ValueError, IndexError, KeyError):
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text="File not found or already has been deleted.",
@@ -591,7 +573,7 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="wrong or incomplete search type. (only postId and fileName are allowed)",
+            text="wrong or incomplete search type. (only id and filename are allowed)",
         )
 
 
@@ -604,9 +586,6 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     start_handler = CommandHandler(
         "start", start, filters.Chat(username=os.getenv("username"))
-    )
-    searchDate_handler = CommandHandler(
-        "searchDate", searchDate, filters.Chat(username=os.getenv("username"))
     )
     searchList_handler = CommandHandler(
         "searchList", searchList, filters.Chat(username=os.getenv("username"))
@@ -624,7 +603,6 @@ if __name__ == "__main__":
 
     application = ApplicationBuilder().token(botToken).build()
     application.add_handler(start_handler)
-    application.add_handler(searchDate_handler)
     application.add_handler(searchList_handler)
     application.add_handler(search_handler)
     application.add_handler(remove_handler)

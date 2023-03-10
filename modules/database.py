@@ -31,13 +31,15 @@ class Post(Base):
     day: Mapped[int]
     month: Mapped[str]
     year: Mapped[int]
+    takenTime: Mapped[str]
+    createdTime: Mapped[str]
 
     tags: Mapped[list["Tag"]] = relationship(
         back_populates="post", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
-        return f"Post(id={self.id!r}, filename={self.filename!r}, day={self.day!r}, month={self.month!r}, year={self.year!r}, timestamp={self.timestamp!r})"
+        return f"Post(id={self.id!r}, filename={self.filename!r}, takenTime={self.takenTime!r}, createdTime={self.createdTime!r})"
 
 
 class Tag(Base):
@@ -107,15 +109,74 @@ def update_DB(messages):
                     .split("Taken: ")[-1]
                     .split("Created:")[0]
                     .split(", ")[1],
+                    takenTime=item[1].split("Taken:")[1].split("Created:")[0].strip(),
+                    createdTime=item[1].split("Created:")[1].split("Tags")[0].strip(),
                     tags=tag_list,
                 )
             )
-            session.commit()
+        session.commit()
+
+
+def add_to_DB(id, filename, takentime, createdtime, tags=None):
+    if tags is None:
+        tags = []
+
+    day = takentime.split(", ")[0].split(" ")[1]
+    month = takentime.split(", ")[0].split(" ")[0].casefold()
+    year = takentime.split(", ")[1]
+    tag_list = [Tag(tag=tag.strip()) for tag in tags]
+
+    with Session(engine) as session:
+        session.add(
+            Post(
+                id=id,
+                filename=filename,
+                day=day,
+                month=month,
+                year=year,
+                takenTime=takentime,
+                createdTime=createdtime,
+                tags=tag_list,
+            )
+        )
+        session.commit()
+
+
+def edit_DB(post_id, tags=None):
+    if tags is None:
+        tags = []
+
+    with Session(engine) as session:
+        post = session.get(Post, post_id)
+        for tag in tags:
+            tag: str
+            if tag[0] == "-":
+                tag = tag[1::].strip().casefold()
+                DEL = (
+                    select(Tag)
+                    .join(Tag.post)
+                    .where(Post.id == post_id)
+                    .where(Tag.tag == tag)
+                )
+                for tag in session.scalars(DEL):
+                    post.tags.remove(tag)
+            else:
+                post.tags.append(Tag(tag=tag.strip().casefold()))
+        session.commit()
+
+        return post.filename, post.takenTime, post.createdTime, post.tags
+
+
+def remove_from_DB(value):
+    with Session(engine) as session:
+        post = session.get(Post, value)
+        session.delete(post)
+        session.commit()
+    return True
 
 
 def search_in_DB(search_type, value, offset=None, limit=None):
     results = []
-    search_type = search_type.casefold()
     with Session(engine) as session:
         if search_type in ["id", "day", "month", "year", "date", "filename"]:
             if search_type == "id":
@@ -166,35 +227,13 @@ def search_in_DB(search_type, value, offset=None, limit=None):
 
         if search_type in ["tag", "tags", "album", "albums"]:
             result = (
-                select(Tag).where(Tag.tag.in_([value[1]])).offset(offset).limit(limit)
+                select(Tag)
+                .where(Tag.tag.in_([value[1].casefold()]))
+                .offset(offset)
+                .limit(limit)
             )
             results.extend(
                 (row.post.id, row.post.filename) for row in session.scalars(result)
             )
 
     return results
-
-
-def add_to_DB(id, filename, takentime, tags=[]):
-    # sourcery skip: default-mutable-arg
-
-    day = takentime.split(", ")[0].split(" ")[1]
-    month = takentime.split(", ")[0].split(" ")[0].casefold()
-    year = takentime.split(", ")[1]
-    tag_list = [Tag(tag=tag.strip()) for tag in tags]
-
-    with Session(engine) as session:
-        session.add(
-            Post(
-                id=id, filename=filename, day=day, month=month, year=year, tags=tag_list
-            )
-        )
-        session.commit()
-
-
-def remove_from_DB(value):
-    with Session(engine) as session:
-        post = session.get(Post, value)
-        session.delete(post)
-        session.commit()
-    return post

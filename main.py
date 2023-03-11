@@ -31,6 +31,7 @@ logging.basicConfig(
 from modules.database import (
     fetch_messages,
     search_in_DB,
+    search_tags_in_DB,
     remove_from_DB,
     add_to_DB,
     edit_DB,
@@ -210,6 +211,34 @@ async def imgNavButtons(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         reply_markup=reply_markup,
     )
     await query.delete_message()
+
+
+async def taglist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tags = search_tags_in_DB()
+    if tags == []:
+        await context.bot.sendMessage(
+            chat_id=update.effective_chat.id,
+            text="Tags not found.",
+        )
+        return False
+
+    keyboard = [
+        [InlineKeyboardButton(tag, callback_data=f"/searchlist {tag}")] for tag in tags
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    context.bot_data["msgId"] = await context.bot.sendMessage(
+        chat_id=update.effective_chat.id,
+        text="available tags.",
+        reply_markup=reply_markup,
+        reply_to_message_id=update.effective_message.id,
+    )
+
+
+async def callback_commands_handler(update, context):
+    callback = update.callback_query.data
+    if callback[:11] == "/searchlist":
+        context.args = ["tag", callback[12:].strip()]
+        await searchList(update, context)
 
 
 async def searchList(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -563,6 +592,9 @@ if __name__ == "__main__":
     search_handler = CommandHandler(
         "search", search, filters.Chat(username=os.getenv("username"))
     )
+    tagList_handler = CommandHandler(
+        "tagList", taglist, filters.Chat(username=os.getenv("username"))
+    )
     update_handler = CommandHandler(
         "update", db_update, filters.Chat(username=os.getenv("username"))
     )
@@ -571,6 +603,7 @@ if __name__ == "__main__":
     application = ApplicationBuilder().token(botToken).build()
     application.add_handler(start_handler)
     application.add_handler(searchList_handler)
+    application.add_handler(tagList_handler)
     application.add_handler(search_handler)
     application.add_handler(update_handler)
     application.add_handler(CallbackQueryHandler(imgNavButtons, pattern="^img"))
@@ -578,6 +611,9 @@ if __name__ == "__main__":
     application.add_handler(CallbackQueryHandler(getListMedia, pattern="^filename"))
     application.add_handler(CallbackQueryHandler(dummyButtons, pattern="^dummy$"))
     application.add_handler(CallbackQueryHandler(remove, pattern="^remove"))
+    application.add_handler(
+        CallbackQueryHandler(callback_commands_handler, pattern="^/")
+    )
 
     upload_handler = ConversationHandler(
         entry_points=[

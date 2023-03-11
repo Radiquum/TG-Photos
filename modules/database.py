@@ -175,6 +175,15 @@ def remove_from_DB(value):
     return True
 
 
+def search_tags_in_DB():
+    results = []
+    with Session(engine) as session:
+        result = select(Tag)
+        results.extend((row.tag) for row in session.scalars(result))
+
+    return list(dict.fromkeys(results))
+
+
 def search_in_DB(search_type, value, offset=None, limit=None):
     results = []
     with Session(engine) as session:

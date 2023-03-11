@@ -2,6 +2,7 @@ Add this commands to your bot in @BotFather
 
 search - search media as files (day, month, year, date, tag) (value)
 searchlist - search media as list (day, month, year, date, tag) (value)
+taglist - display all available tags
 upload - upload new media
 login - login to your Telegram account to allow database updates
 update - re-fetch and update database of posts

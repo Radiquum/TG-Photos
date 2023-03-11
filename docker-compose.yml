@@ -1,0 +1,12 @@
+---
+version: '3.4'
+
+services:
+  tgphotos:
+    image: tgphotos:latest
+    restart: unless-stopped
+    volumes:
+      - ./data:/bot/data
+    env_file:
+      - .env
+  

@@ -162,6 +162,7 @@ cython_debug/
 
 #Other
 .vscode/
+data/
 *.db
-my_account.session
+*.session
 log.txt

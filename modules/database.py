@@ -55,14 +55,14 @@ class Tag(Base):
         return f"Tag(id={self.id!r}, post_id={self.post_id!r}, tag={self.tag!r})"
 
 
-engine = create_engine("sqlite+pysqlite:///posts.db", echo=True)
+engine = create_engine("sqlite+pysqlite:///data/posts.db", echo=True)
 
 
 async def fetch_messages():
     load_dotenv()
     api_id = os.getenv("appId")
     api_hash = os.getenv("appHash")
-    async with Client("my_account", api_id, api_hash) as app:
+    async with Client("data/user_account", api_id, api_hash) as app:
         messages = []
         chat = await app.get_chat(int(os.getenv("chatId")))
         async for message in app.get_chat_history(chat_id=chat.id):
@@ -76,7 +76,7 @@ def update_DB(messages):
     with contextlib.suppress(FileNotFoundError, ProgrammingError):
         engine.dispose()
         sleep(5)
-        os.remove("posts.db")
+        os.remove("data/posts.db")
 
     Base.metadata.create_all(engine)
     with Session(engine) as session:

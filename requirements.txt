@@ -4,3 +4,4 @@ python-dotenv
 pre-commit
 pyrogram
 TgCrypto
+Pillow

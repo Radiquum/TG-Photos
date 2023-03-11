@@ -2,20 +2,20 @@ import contextlib
 import os
 from sqlite3 import ProgrammingError
 from time import sleep
-from typing import List
-from typing import Optional
 
 from dotenv import load_dotenv
 from pyrogram import Client
+from pyrogram.errors import AuthKeyUnregistered
 from sqlalchemy import create_engine
 from sqlalchemy import ForeignKey
 from sqlalchemy import select
-from sqlalchemy import String
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm import Session
+from telegram import Update
+from telegram.ext import ContextTypes
 
 
 class Base(DeclarativeBase):
@@ -62,14 +62,17 @@ async def fetch_messages():
     load_dotenv()
     api_id = os.getenv("appId")
     api_hash = os.getenv("appHash")
-    async with Client("data/user_account", api_id, api_hash) as app:
-        messages = []
-        chat = await app.get_chat(int(os.getenv("chatId")))
-        async for message in app.get_chat_history(chat_id=chat.id):
-            if message.caption is None:
-                continue
-            messages.append((message.id, message.caption))
-        update_DB(messages)
+    try:
+        async with Client("data/user_account", api_id, api_hash) as app:
+            messages = []
+            chat = await app.get_chat(int(os.getenv("chatId")))
+            async for message in app.get_chat_history(chat_id=chat.id):
+                if message.caption is None:
+                    continue
+                messages.append((message.id, message.caption))
+            update_DB(messages)
+    except AuthKeyUnregistered:
+        return False
 
 
 def update_DB(messages):
@@ -115,6 +118,29 @@ def update_DB(messages):
                 )
             )
         session.commit()
+        return True
+
+
+async def update_DB_initiate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if os.path.isfile("data/user_account.session"):
+        await context.bot.sendMessage(
+            update.effective_chat.id, "Updating posts DataBase... please wait..."
+        )
+    else:
+        await context.bot.sendMessage(
+            chat_id=update.effective_chat.id, text="please /login first"
+        )
+        return False
+
+    status = await fetch_messages()
+    if status == False:
+        await context.bot.sendMessage(
+            update.effective_chat.id, "Authorization failure. please re-login."
+        )
+        return False
+    await context.bot.sendMessage(
+        update.effective_chat.id, "DataBase has been updated."
+    )
 
 
 def add_to_DB(id, filename, takentime, createdtime, tags=None):

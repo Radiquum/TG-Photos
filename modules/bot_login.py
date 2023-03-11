@@ -33,12 +33,18 @@ async def login_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with contextlib.suppress(FileNotFoundError):
         os.remove("data/user_account.session")
 
+    context.bot_data["msgId"] = await context.bot.sendMessage(
+        update.effective_chat.id,
+        "connecting to telegram....",
+    )
+
     context.bot_data["client"] = Client("data/user_account", api_id, api_hash)
     await context.bot_data["client"].connect()
 
-    context.bot_data["msgId"] = await context.bot.sendMessage(
-        update.effective_chat.id,
-        "Send me your Phone number (+12345678900).\n\n Send /cancel to cancel sign in.",
+    context.bot_data["msgId"] = await context.bot.editMessageText(
+        chat_id=update.effective_chat.id,
+        message_id=context.bot_data["msgId"]["message_id"],
+        text="Send me your Phone number (+12345678900).\n\n Send /cancel to cancel sign in.",
     )
 
     return PHONE

@@ -39,7 +39,7 @@ The Telegram Google Photo Bot comes with a set of commands to help you organize 
 
 ## Technical details
 
-The Telegram Google Photo Bot is built using Python and the Telegram Bot API.
+The TG-Photos is built using Python and the Telegram Bot API.
 It uses an Telegram API and SQL database to store and retrieve photos from your specified channel.
 
 ## License

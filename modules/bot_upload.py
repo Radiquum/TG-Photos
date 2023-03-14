@@ -37,21 +37,31 @@ async def upload_get_media_time(document):
     img = Image.open(document.file_name)
 
     try:
-        exif = {
-            ExifTags.TAGS[k]: v for k, v in img.getexif().items() if k in ExifTags.TAGS
-        }
-        takentime = datetime.datetime.strptime(
-            exif["DateTime"], "%Y:%m:%d %H:%M:%S"
-        ).strftime("%b %d, %Y, %I:%M:%S %p")
+        if exif := {
+            ExifTags.TAGS[k]: v
+            for k, v in img.getexif().items()
+            if k in ExifTags.TAGS
+        }:
+            takentime = datetime.datetime.strptime(
+                exif["DateTime"], "%Y:%m:%d %H:%M:%S"
+            ).strftime("%b %d, %Y, %I:%M:%S %p")
+        else:
+            raise AttributeError
     except AttributeError:
-        takentime = createdtime
+        try:
+            photoTime = document.file_name.split(".")[0].split("_")
+            day = datetime.datetime.strptime(photoTime[1], "%Y%m%d").strftime("%b %d, %Y,")
+            time = datetime.datetime.strptime(photoTime[2][:6], "%H%M%S").strftime("%I:%M:%S %p")
+            takentime = f"{day} {time}"
+        except (KeyError, IndexError):
+            takentime = createdtime
 
     img.close()
     os.remove(document.file_name)
     return takentime, createdtime
 
 
-async def upload_tag(update: Update) -> int:
+async def upload_tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(
         'Now, send me a tag(s)[divided by ","] you wish to add or send /skip if you don\'t want to.'
     )
@@ -111,12 +121,12 @@ async def upload_skip_tag(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return ConversationHandler.END
 
 
-async def upload_cancel(update: Update) -> int:
+async def upload_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("upload cancelled.")
     return ConversationHandler.END
 
 
-async def upload_wrong_format(update: Update):
+async def upload_wrong_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("wrong attachment format.")
 
 

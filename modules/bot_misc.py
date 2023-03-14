@@ -48,9 +48,11 @@ async def callback_commands_handler(update, context):
     if callback == "dummy":
         return
     
+
 async def get_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await context.bot.sendDocument(chat_id=update.effective_chat.id, document=f'logs/log-{current_time}.log')
+
 
 async def command_unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(

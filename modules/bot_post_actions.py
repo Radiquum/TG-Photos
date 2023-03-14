@@ -9,29 +9,29 @@ from telegram.ext import ConversationHandler
 from telegram.ext import filters
 from telegram.ext import MessageHandler
 
-from modules.database import edit_DB
-from modules.database import remove_from_DB
-from modules.database import search_in_DB
+from modules.database import edit_db
+from modules.database import remove_from_db
+from modules.database import search_in_db
 
 chatId = os.getenv("chatId")
+pages = 0
 
 
 async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     await query.answer()
     await query.delete_message()
-    global n
     global pages
     value = int(query.data.strip("remove"))
 
     try:
-        remove_from_DB(value)
+        remove_from_db(value)
         with contextlib.suppress(NameError):
             pages = sum(
                 i % 6 == 0
                 for i in range(
                     len(
-                        search_in_DB(
+                        search_in_db(
                             context.user_data.get("searchType"),
                             context.user_data.get("searchTerm"),
                         )
@@ -53,7 +53,7 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 NEW = range(1)
 
 
-async def edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.delete_message()
@@ -65,9 +65,9 @@ async def edit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     return NEW
 
 
-async def edit_tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def edit_tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     tag_list = update.message.text.split(",")
-    post = edit_DB(context.chat_data["media_id"], tag_list)
+    post = edit_db(context.chat_data["media_id"], tag_list)
     tags = [tag.tag for tag in post[3]]
 
     await context.bot.edit_message_caption(
@@ -118,4 +118,5 @@ edit_handler = ConversationHandler(
         ],
     },
     fallbacks=[CommandHandler("cancel", edit_cancel)],
+    per_message=False
 )

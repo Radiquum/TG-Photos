@@ -61,7 +61,8 @@ async def login_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     await context.bot.editMessageText(
         chat_id=update.effective_chat.id,
         message_id=context.bot_data["msgId"]["message_id"],
-        text="Now send me your confirmation code from Telegram app. (you can divide numbers by [space] for better results)\n\n Send /cancel to cancel sign in.",
+        text="Now send me your confirmation code from Telegram app. \
+        (you can divide numbers by [space] for better results)\n\n Send /cancel to cancel sign in."
     )
 
     return CONFIRMATION

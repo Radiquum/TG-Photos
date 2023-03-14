@@ -10,7 +10,7 @@ from telegram.ext import ConversationHandler
 from telegram.ext import filters
 from telegram.ext import MessageHandler
 
-from modules.database import add_to_DB
+from modules.database import add_to_db
 
 UPLOAD_MEDIA, ADD_TAG = range(2)
 
@@ -25,16 +25,12 @@ async def upload_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return UPLOAD_MEDIA
 
 
-async def upload_receive_media(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> int:
+async def upload_receive_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.bot_data["document_file"].append(update.message.document)
 
 
-async def upload_get_media_Time(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, document
-):
-    createdTime = datetime.datetime.now().strftime("%b %d, %Y, %I:%M:%S %p")
+async def upload_get_media_time(document):
+    createdtime = datetime.datetime.now().strftime("%b %d, %Y, %I:%M:%S %p")
 
     photo_file = await document.get_file()
     await photo_file.download_to_drive(document.file_name)
@@ -42,22 +38,22 @@ async def upload_get_media_Time(
 
     try:
         exif = {
-            ExifTags.TAGS[k]: v for k, v in img._getexif().items() if k in ExifTags.TAGS
+            ExifTags.TAGS[k]: v for k, v in img.getexif().items() if k in ExifTags.TAGS
         }
-        takenTime = datetime.datetime.strptime(
+        takentime = datetime.datetime.strptime(
             exif["DateTime"], "%Y:%m:%d %H:%M:%S"
         ).strftime("%b %d, %Y, %I:%M:%S %p")
     except AttributeError:
-        takenTime = createdTime
+        takentime = createdtime
 
     img.close()
     os.remove(document.file_name)
-    return takenTime, createdTime
+    return takentime, createdtime
 
 
-async def upload_tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def upload_tag(update: Update) -> int:
     await update.message.reply_text(
-        'Now, send me a tag(s)[devided by ","] you wish to add or send /skip if you don\'t want to.'
+        'Now, send me a tag(s)[divided by ","] you wish to add or send /skip if you don\'t want to.'
     )
 
     return ADD_TAG
@@ -67,23 +63,23 @@ async def upload_add_tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     tags = update.message.text
     await update.message.reply_text("Media upload has been started, please wait...")
     for item in context.bot_data["document_file"]:
-        takenTime, createdTime = await upload_get_media_Time(Update, context, item)
+        takentime, createdtime = await upload_get_media_time(item)
         context.bot_data["docId"] = await context.bot.send_document(
             chat_id=os.getenv("chatId"),
             document=item,
             parse_mode="html",
             caption=f"""
 <b>FileName</b>: {item.file_name}
-<b>Taken</b>: {takenTime}
-<b>Created</b>: {createdTime}
+<b>Taken</b>: {takentime}
+<b>Created</b>: {createdtime}
 <b>Tags</b>: {tags}
 """,
         )
-        add_to_DB(
+        add_to_db(
             context.bot_data["docId"].message_id,
             item.file_name,
-            takenTime,
-            createdTime,
+            takentime,
+            createdtime,
             tags.casefold().strip().split(","),
         )
     await update.message.reply_text("Your media has been uploaded and tagged.")
@@ -93,33 +89,34 @@ async def upload_add_tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def upload_skip_tag(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text("Media upload has been started, please wait...")
     for item in context.bot_data["document_file"]:
-        takenTime, createdTime = await upload_get_media_Time(Update, context, item)
+        takentime, createdtime = await upload_get_media_time(item)
         context.bot_data["docId"] = await context.bot.send_document(
             chat_id=os.getenv("chatId"),
             document=item,
             parse_mode="html",
             caption=f"""
 <b>FileName</b>: {item.file_name}
-<b>Taken</b>: {takenTime}
-<b>Created</b>: {createdTime}
+<b>Taken</b>: {takentime}
+<b>Created</b>: {createdtime}
 <b>Tags</b>:
     """,
         )
-        add_to_DB(
-            context.bot_data["docId"].message_id, item.file_name, takenTime, createdTime
+        add_to_db(
+            context.bot_data["docId"].message_id,
+            item.file_name,
+            takentime,
+            createdtime
         )
     await update.message.reply_text("Your media has been uploaded without tags.")
     return ConversationHandler.END
 
 
-async def upload_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def upload_cancel(update: Update) -> int:
     await update.message.reply_text("upload cancelled.")
     return ConversationHandler.END
 
 
-async def upload_wrong_format(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> int:
+async def upload_wrong_format(update: Update):
     await update.message.reply_text("wrong attachment format.")
 
 

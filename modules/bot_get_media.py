@@ -1,22 +1,35 @@
+import contextlib
 import os
 
 from telegram import InlineKeyboardButton
 from telegram import InlineKeyboardMarkup
 from telegram import Update
 from telegram.ext import ContextTypes
+from telegram.error import BadRequest
 
-from modules.database import search_in_DB
+from modules.database import search_in_db
 
 chatId = os.getenv("chatId")
+offset = 0
+n = 0
+pages = 0
 
 
 async def search_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global n
     n = 0
 
+    with contextlib.suppress(KeyError):
+        await context.bot.deleteMessage(chat_id=update.effective_chat.id, message_id=context.bot_data["msgId"]["message_id"])
+        del context.bot_data["msgId"]
+
     try:
         context.user_data["searchType"] = context.args[0].casefold()
         context.user_data["searchTerm"] = context.args
+        if len(context.args) < 2:
+            raise IndexError
+        if context.user_data["searchType"] == "date" and len(context.args) < 4:
+            raise IndexError
     except IndexError:
         await context.bot.sendMessage(
             chat_id=update.effective_chat.id, text="wrong or not complete command!"
@@ -26,9 +39,15 @@ async def search_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id=update.effective_chat.id, message_id=update.effective_message.id
     )
 
-    context.user_data["searchResults"] = search_in_DB(
+    context.user_data["searchResults"] = search_in_db(
         context.user_data.get("searchType"), context.user_data.get("searchTerm")
     )
+    if not context.user_data["searchResults"]:
+        await context.bot.sendMessage(
+            chat_id=update.effective_chat.id,
+            text="Nothing found for this date. Retry your search.",
+        )
+        return False
 
     if len(context.user_data["searchResults"]) == 1:
         keyboard = [
@@ -68,12 +87,6 @@ async def search_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ],
         ]
     context.bot_data["reply_markup"] = reply_markup = InlineKeyboardMarkup(keyboard)
-    if context.user_data["searchResults"] == []:
-        await context.bot.sendMessage(
-            chat_id=update.effective_chat.id,
-            text="Nothing found for this date. Retry your search.",
-        )
-        return False
     context.bot_data["msgId"] = await context.bot.copyMessage(
         chat_id=update.effective_chat.id,
         from_chat_id=chatId,
@@ -82,14 +95,13 @@ async def search_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def search_image_navigation(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def search_image_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     global n
     resp = query.data.strip("img")
     n += int(resp)
+    keyboard = []
 
     if n != len(context.user_data["searchResults"]):
         keyboard = [
@@ -171,25 +183,35 @@ async def search_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     offset = 0
     global pages
     pages = 0
+
+    with contextlib.suppress(KeyError):
+        await context.bot.deleteMessage(chat_id=update.effective_chat.id, message_id=context.bot_data["msgId"]["message_id"])
+        del context.bot_data["msgId"]
+
     try:
         context.user_data["searchType"] = context.args[0].casefold()
         context.user_data["searchTerm"] = context.args
+        if len(context.args) < 2:
+            raise IndexError
+        if context.user_data["searchType"] == "date" and len(context.args) < 4:
+            raise IndexError
     except IndexError:
         await context.bot.sendMessage(
             chat_id=update.effective_chat.id, text="wrong or not complete command!"
         )
         return False
-    await context.bot.deleteMessage(
-        chat_id=update.effective_chat.id, message_id=update.effective_message.id
-    )
+    with contextlib.suppress(BadRequest):
+        await context.bot.deleteMessage(
+            chat_id=update.effective_chat.id, message_id=update.effective_message.id
+        )
 
-    context.user_data["searchResults"] = search_in_DB(
+    context.user_data["searchResults"] = search_in_db(
         context.user_data.get("searchType"),
         context.user_data.get("searchTerm"),
         offset,
         limit=6,
     )
-    if context.user_data["searchResults"] == []:
+    if not context.user_data["searchResults"]:
         await context.bot.sendMessage(
             chat_id=update.effective_chat.id,
             text="Nothing found for this date. Retry your search.",
@@ -200,7 +222,7 @@ async def search_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
         i % 6 == 0
         for i in range(
             len(
-                search_in_DB(
+                search_in_db(
                     context.user_data.get("searchType"),
                     context.user_data.get("searchTerm"),
                 )
@@ -222,9 +244,7 @@ async def search_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def search_list_navigation(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def search_list_navigation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     global n
@@ -236,13 +256,13 @@ async def search_list_navigation(
     else:
         offset += 6
 
-    context.user_data["searchResults"] = search_in_DB(
+    context.user_data["searchResults"] = search_in_db(
         context.user_data.get("searchType"),
         context.user_data.get("searchTerm"),
         offset,
         limit=6,
     )
-    if context.user_data["searchResults"] == []:
+    if not context.user_data["searchResults"]:
         await context.bot.sendMessage(
             chat_id=update.effective_chat.id,
             text="Nothing found for this date. Retry your search.",
@@ -277,7 +297,7 @@ async def get_list_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     query = update.callback_query
     await query.answer()
     resp = query.data.strip("filename").strip()
-    media_id = search_in_DB("filename", [0, resp])
+    media_id = search_in_db("filename", [0, resp])
     try:
         keyboard = [
             [

@@ -23,7 +23,7 @@ docker & docker-compose
 4. (optional) while in dialog with @botFather, add commands from ```commands.txt``` to your bot
 5. create a telegram channel and take note of it's ID
 6. fill ```botToken, chatId``` and ```username``` in ```.env``` respectfully
-7. run ```docker build -t tgphotos .``` and wait
+7. run ```docker build -t tgphotos:latest .``` and wait
 8. run ```docker-compose up -d``` to start the container
 9. go to your bot username and send ```/start``` (or press start) to see if it's working. If bot responds, it's running successfully
 
